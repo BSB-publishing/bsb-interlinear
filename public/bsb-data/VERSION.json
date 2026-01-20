@@ -1,0 +1,21 @@
+{
+  "build_date": "2026-01-19T19:01:58Z",
+  "sources": {
+    "bsb_usj": {
+      "repo": "https://github.com/BSB-publishing/bsb2usfm",
+      "sha": "d8cdbaf718fd229f425edcf63cfd4ce55cdc1cc4",
+      "date": "2026-01-19T16:56:38Z"
+    },
+    "bible_databases": {
+      "repo": "https://github.com/scrollmapper/bible_databases",
+      "sha": "a228a19a29099a41c196c2a310cd93e50a390e30",
+      "date": "2025-02-23T19:54:10Z"
+    },
+    "oshb": {
+      "repo": "https://github.com/openscriptures/morphhb",
+      "sha": "3d15126fb1ef74867fc1434be1942e837932691f",
+      "date": "2024-08-27T13:19:54Z",
+      "license": "CC-BY 4.0"
+    }
+  }
+}

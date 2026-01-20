@@ -1,0 +1,37 @@
+GNU GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+
+Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+
+Everyone is permitted to copy and distribute verbatim copies of this
+license document, but changing it is not allowed.
+
+                            Preamble
+
+The GNU General Public License is a free, copyleft license for software
+and other kinds of works.
+
+[Full GPL v3 text available at: https://www.gnu.org/licenses/gpl-3.0.txt]
+
+===============================================================================
+
+ATTRIBUTION
+
+This project is based on bible-strong by Stephane Music (smontlouis)
+https://github.com/smontlouis/bible-strong
+
+Original project license: GNU General Public License v3.0
+
+===============================================================================
+
+DATA CONTENT LICENSES
+
+The application code is licensed under GPL v3 as above.
+The Bible data and lexicon content have their own licenses:
+
+- BSB Bible text: CC0 1.0 Universal (Public Domain)
+- Strong's Concordance: Public Domain
+- Treasury of Scripture Knowledge: Public Domain
+- Open Scriptures Hebrew Bible (OSHB) morphology: CC BY 4.0
+
+See public/bsb-data/ATTRIBUTION.md for full data attribution details.
