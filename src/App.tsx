@@ -106,19 +106,53 @@ const bookAbbrev: Record<number, string> = {
   66: 'Rev',
 }
 
-export default function App() {
-  // Navigation state
-  const [screen, setScreen] = useState<Screen>('reader')
-  const [bookNumber, setBookNumber] = useState(1)
-  const [chapter, setChapter] = useState(1)
+// localStorage keys
+const STORAGE_KEYS = {
+  bookNumber: 'bsb-bookNumber',
+  chapter: 'bsb-chapter',
+  displayMode: 'bsb-displayMode',
+  useHebrewWordOrder: 'bsb-useHebrewWordOrder',
+}
 
-  // Display state
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('text')
+// Helper to safely get from localStorage
+const getStoredValue = <T,>(key: string, defaultValue: T): T => {
+  try {
+    const stored = localStorage.getItem(key)
+    if (stored === null) return defaultValue
+    return JSON.parse(stored) as T
+  } catch {
+    return defaultValue
+  }
+}
+
+// Helper to save to localStorage
+const setStoredValue = <T,>(key: string, value: T): void => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export default function App() {
+  // Navigation state - initialized from localStorage
+  const [screen, setScreen] = useState<Screen>('reader')
+  const [bookNumber, setBookNumber] = useState(() => getStoredValue(STORAGE_KEYS.bookNumber, 1))
+  const [chapter, setChapter] = useState(() => getStoredValue(STORAGE_KEYS.chapter, 1))
+
+  // Display state - initialized from localStorage
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() =>
+    getStoredValue(STORAGE_KEYS.displayMode, 'text')
+  )
   const [showModeDropdown, setShowModeDropdown] = useState(false)
-  const [useHebrewWordOrder, setUseHebrewWordOrder] = useState(false)
+  const [useHebrewWordOrder, setUseHebrewWordOrder] = useState(() =>
+    getStoredValue(STORAGE_KEYS.useHebrewWordOrder, false)
+  )
 
   // Passage selector state
-  const [selectorTestament, setSelectorTestament] = useState<Testament>('OT')
+  const [selectorTestament, setSelectorTestament] = useState<Testament>(() =>
+    getStoredValue(STORAGE_KEYS.bookNumber, 1) <= 39 ? 'OT' : 'NT'
+  )
   const [selectorBook, setSelectorBook] = useState<number | null>(null)
 
   // BSB data
@@ -147,6 +181,30 @@ export default function App() {
   const currentBook = books.find(b => b.id === bookNumber) || books[0]
   const isHebrew = isOldTestament(bookNumber)
   const isInterlinear = displayMode === 'interlinear-compact' || displayMode === 'interlinear-full'
+
+  // Persist bookNumber to localStorage
+  useEffect(() => {
+    setStoredValue(STORAGE_KEYS.bookNumber, bookNumber)
+  }, [bookNumber])
+
+  // Persist chapter to localStorage
+  useEffect(() => {
+    setStoredValue(STORAGE_KEYS.chapter, chapter)
+  }, [chapter])
+
+  // Persist displayMode to localStorage and set Hebrew word order default for interlinear
+  useEffect(() => {
+    setStoredValue(STORAGE_KEYS.displayMode, displayMode)
+    // Default to Hebrew word order when switching to interlinear modes (for OT)
+    if (isInterlinear && isHebrew) {
+      setUseHebrewWordOrder(true)
+    }
+  }, [displayMode, isInterlinear, isHebrew])
+
+  // Persist useHebrewWordOrder to localStorage
+  useEffect(() => {
+    setStoredValue(STORAGE_KEYS.useHebrewWordOrder, useHebrewWordOrder)
+  }, [useHebrewWordOrder])
 
   // Load BSB chapter data
   useEffect(() => {
