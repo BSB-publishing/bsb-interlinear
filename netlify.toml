@@ -1,0 +1,27 @@
+[build]
+  command = "yarn build"
+  publish = "dist"
+
+# SPA routing - redirect all requests to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Cache Bible data files
+[[headers]]
+  for = "/bsb-data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+# Cache Strong's lexicon data
+[[headers]]
+  for = "/data/strongs/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"

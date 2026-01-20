@@ -92,7 +92,7 @@ Colors are defined in `App.tsx`:
 
 ## Attribution
 
-This project is based on [bible-strong](https://github.com/smontlouis/bible-strong) by Stéphane Music.
+This project is based on [bible-strong](https://github.com/smontlouis/bible-strong) by Stéphane Montlouis-Calixte.
 
 Data sources are documented in `public/bsb-data/ATTRIBUTION.md`. Key attributions:
 - **BSB text**: CC0 Public Domain

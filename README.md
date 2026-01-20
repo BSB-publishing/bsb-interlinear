@@ -86,7 +86,7 @@ public/
 
 ## Acknowledgments
 
-This project is based on [bible-strong](https://github.com/smontlouis/bible-strong) by Stephane Music, a comprehensive React Native Bible study application.
+This project is based on [bible-strong](https://github.com/smontlouis/bible-strong) by Stéphane Montlouis-Calixte, a comprehensive React Native Bible study application.
 
 ## License
 
@@ -102,6 +102,6 @@ Provided that you:
 - Credit the original project
 - Use the same GPL v3 license
 
-Based on [bible-strong](https://github.com/smontlouis/bible-strong) by Stephane Music.
+Based on [bible-strong](https://github.com/smontlouis/bible-strong) by Stéphane Montlouis-Calixte.
 
 The Bible data and lexicon content have their own licenses as noted above.
