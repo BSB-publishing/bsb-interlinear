@@ -33,7 +33,78 @@ const colors = {
 
 // Types
 type DisplayMode = 'text' | 'strongs' | 'interlinear-compact' | 'interlinear-full'
-type Screen = 'reader' | 'bookSelector' | 'chapterSelector' | 'concordance' | 'strongDetail'
+type Screen = 'reader' | 'passageSelector' | 'concordance' | 'strongDetail'
+type Testament = 'OT' | 'NT'
+
+// Book abbreviations for compact display
+const bookAbbrev: Record<number, string> = {
+  1: 'Gen',
+  2: 'Exo',
+  3: 'Lev',
+  4: 'Num',
+  5: 'Deu',
+  6: 'Jos',
+  7: 'Jdg',
+  8: 'Rut',
+  9: '1Sa',
+  10: '2Sa',
+  11: '1Ki',
+  12: '2Ki',
+  13: '1Ch',
+  14: '2Ch',
+  15: 'Ezr',
+  16: 'Neh',
+  17: 'Est',
+  18: 'Job',
+  19: 'Psa',
+  20: 'Pro',
+  21: 'Ecc',
+  22: 'Son',
+  23: 'Isa',
+  24: 'Jer',
+  25: 'Lam',
+  26: 'Eze',
+  27: 'Dan',
+  28: 'Hos',
+  29: 'Joe',
+  30: 'Amo',
+  31: 'Oba',
+  32: 'Jon',
+  33: 'Mic',
+  34: 'Nah',
+  35: 'Hab',
+  36: 'Zep',
+  37: 'Hag',
+  38: 'Zec',
+  39: 'Mal',
+  40: 'Mat',
+  41: 'Mar',
+  42: 'Luk',
+  43: 'Joh',
+  44: 'Act',
+  45: 'Rom',
+  46: '1Co',
+  47: '2Co',
+  48: 'Gal',
+  49: 'Eph',
+  50: 'Phi',
+  51: 'Col',
+  52: '1Th',
+  53: '2Th',
+  54: '1Ti',
+  55: '2Ti',
+  56: 'Tit',
+  57: 'Phm',
+  58: 'Heb',
+  59: 'Jam',
+  60: '1Pe',
+  61: '2Pe',
+  62: '1Jn',
+  63: '2Jn',
+  64: '3Jn',
+  65: 'Jud',
+  66: 'Rev',
+}
 
 export default function App() {
   // Navigation state
@@ -45,6 +116,10 @@ export default function App() {
   const [displayMode, setDisplayMode] = useState<DisplayMode>('text')
   const [showModeDropdown, setShowModeDropdown] = useState(false)
   const [useHebrewWordOrder, setUseHebrewWordOrder] = useState(false)
+
+  // Passage selector state
+  const [selectorTestament, setSelectorTestament] = useState<Testament>('OT')
+  const [selectorBook, setSelectorBook] = useState<number | null>(null)
 
   // BSB data
   const [bsbData, setBsbData] = useState<BSBChapter | null>(null)
@@ -224,16 +299,23 @@ export default function App() {
     }
 
     // Plain text mode - words with Strong's numbers are clickable
+    // Clean up special markers for plain reading
     if (displayMode === 'text') {
       return (
         <div key={verse.v} css={styles.verseRow}>
           <span css={styles.verseNumber}>{verse.v}</span>
           <span css={styles.verseText}>
             {verse.w.map(([text, strongs], idx) => {
+              // Skip untranslated markers (dashes, ellipses, vvv placeholders with Strong's)
+              if (strongs && /^[-–—]+$|^\.+\s*\.+\s*\.+$|^vvv$/.test(text.trim())) {
+                return null
+              }
               // Punctuation or no Strong's number - render as plain text
               if (!strongs || /^[\s.,;:!?'"()\[\]\-—]+$/.test(text)) {
                 return <span key={idx}>{text}</span>
               }
+              // Clean up text: remove brackets [] and curly braces {} but keep content
+              const cleanText = text.replace(/[\[\]{}]/g, '')
               // Word with Strong's number - make clickable
               return (
                 <span
@@ -241,7 +323,7 @@ export default function App() {
                   css={styles.clickableWord}
                   onClick={() => handleStrongsPress(strongs)}
                 >
-                  {text}
+                  {cleanText}
                 </span>
               )
             })}
@@ -434,61 +516,89 @@ export default function App() {
     )
   }
 
-  // Book selector screen
-  if (screen === 'bookSelector') {
-    return (
-      <div css={styles.container}>
-        <div css={styles.header}>
-          <button css={styles.backBtn} onClick={() => setScreen('reader')}>
-            ← Back
-          </button>
-          <span css={styles.headerTitle}>Select Book</span>
-          <span css={styles.headerSpacer} />
-        </div>
-        <div css={styles.list}>
-          {books.map(book => (
-            <button
-              key={book.id}
-              css={[styles.listItem, book.id === bookNumber && styles.listItemActive]}
-              onClick={() => {
-                setBookNumber(book.id)
-                setChapter(1)
-                setScreen('reader')
-              }}
-            >
-              <span css={styles.listText}>{book.name}</span>
-              <span css={styles.listMeta}>{book.chapters} ch.</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    )
-  }
+  // Combined passage selector screen
+  if (screen === 'passageSelector') {
+    const otBooks = books.filter(b => b.id <= 39)
+    const ntBooks = books.filter(b => b.id > 39)
+    const displayedBooks = selectorTestament === 'OT' ? otBooks : ntBooks
+    const selectedBookData = selectorBook ? books.find(b => b.id === selectorBook) : null
 
-  // Chapter selector screen
-  if (screen === 'chapterSelector') {
     return (
       <div css={styles.container}>
         <div css={styles.header}>
           <button css={styles.backBtn} onClick={() => setScreen('reader')}>
             ← Back
           </button>
-          <span css={styles.headerTitle}>{currentBook.name}</span>
+          <span css={styles.headerTitle}>Select Passage</span>
           <span css={styles.headerSpacer} />
         </div>
-        <div css={styles.grid}>
-          {Array.from({ length: currentBook.chapters }, (_, i) => i + 1).map(ch => (
+        <div css={styles.selectorContent}>
+          {/* Testament tabs */}
+          <div css={styles.testamentTabs}>
             <button
-              key={ch}
-              css={[styles.gridItem, ch === chapter && styles.gridItemActive]}
+              css={[styles.testamentTab, selectorTestament === 'OT' && styles.testamentTabActive]}
               onClick={() => {
-                setChapter(ch)
-                setScreen('reader')
+                setSelectorTestament('OT')
+                setSelectorBook(null)
               }}
             >
-              {ch}
+              Old Testament
             </button>
-          ))}
+            <button
+              css={[styles.testamentTab, selectorTestament === 'NT' && styles.testamentTabActive]}
+              onClick={() => {
+                setSelectorTestament('NT')
+                setSelectorBook(null)
+              }}
+            >
+              New Testament
+            </button>
+          </div>
+
+          {/* Book chips grid */}
+          <div css={styles.bookChipsGrid}>
+            {displayedBooks.map(book => (
+              <button
+                key={book.id}
+                css={[
+                  styles.bookChip,
+                  book.id === selectorBook && styles.bookChipSelected,
+                  book.id === bookNumber && styles.bookChipCurrent,
+                ]}
+                onClick={() => setSelectorBook(selectorBook === book.id ? null : book.id)}
+              >
+                {bookAbbrev[book.id]}
+              </button>
+            ))}
+          </div>
+
+          {/* Chapter grid (shown when book selected) */}
+          {selectedBookData && (
+            <div css={styles.chapterSection}>
+              <div css={styles.chapterSectionHeader}>
+                <span css={styles.chapterSectionTitle}>{selectedBookData.name}</span>
+                <span css={styles.chapterSectionMeta}>{selectedBookData.chapters} chapters</span>
+              </div>
+              <div css={styles.chapterGrid}>
+                {Array.from({ length: selectedBookData.chapters }, (_, i) => i + 1).map(ch => (
+                  <button
+                    key={ch}
+                    css={[
+                      styles.chapterItem,
+                      selectorBook === bookNumber && ch === chapter && styles.chapterItemCurrent,
+                    ]}
+                    onClick={() => {
+                      setBookNumber(selectorBook!)
+                      setChapter(ch)
+                      setScreen('reader')
+                    }}
+                  >
+                    {ch}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -605,11 +715,15 @@ export default function App() {
 
       {/* Header */}
       <div css={styles.header}>
-        <button css={styles.navBtn} onClick={() => setScreen('bookSelector')}>
-          {currentBook.name}
-        </button>
-        <button css={styles.chapterBtn} onClick={() => setScreen('chapterSelector')}>
-          Ch. {chapter}
+        <button
+          css={styles.navBtn}
+          onClick={() => {
+            setSelectorTestament(bookNumber <= 39 ? 'OT' : 'NT')
+            setSelectorBook(bookNumber)
+            setScreen('passageSelector')
+          }}
+        >
+          {currentBook.name} {chapter}
         </button>
         <span css={styles.headerSpacer} />
       </div>
@@ -1109,5 +1223,115 @@ const styles = {
     cursor: 'pointer',
     marginTop: 20,
     '&:hover': { opacity: 0.9 },
+  }),
+
+  // Passage selector
+  selectorContent: css({
+    flex: 1,
+    overflow: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+  }),
+  testamentTabs: css({
+    display: 'flex',
+    padding: '12px 16px',
+    gap: 8,
+    backgroundColor: colors.background,
+    borderBottom: `1px solid ${colors.border}`,
+  }),
+  testamentTab: css({
+    flex: 1,
+    padding: '10px 16px',
+    fontSize: 14,
+    fontWeight: 600,
+    color: colors.secondary,
+    backgroundColor: colors.backgroundAlt,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 8,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    '&:hover': { backgroundColor: colors.primaryLight },
+  }),
+  testamentTabActive: css({
+    color: colors.primary,
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  }),
+  bookChipsGrid: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    padding: 12,
+    gap: 6,
+    backgroundColor: colors.background,
+  }),
+  bookChip: css({
+    padding: '8px 12px',
+    fontSize: 13,
+    fontWeight: 500,
+    color: colors.text,
+    backgroundColor: colors.backgroundAlt,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 6,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    '&:hover': { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+  }),
+  bookChipSelected: css({
+    color: '#fff',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  }),
+  bookChipCurrent: css({
+    fontWeight: 700,
+    borderColor: colors.primary,
+    borderWidth: 2,
+  }),
+  chapterSection: css({
+    padding: 16,
+    backgroundColor: colors.backgroundAlt,
+    borderTop: `1px solid ${colors.border}`,
+    flex: 1,
+  }),
+  chapterSectionHeader: css({
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    marginBottom: 12,
+  }),
+  chapterSectionTitle: css({
+    fontSize: 18,
+    fontWeight: 700,
+    color: colors.text,
+  }),
+  chapterSectionMeta: css({
+    fontSize: 13,
+    color: colors.textMuted,
+  }),
+  chapterGrid: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+  }),
+  chapterItem: css({
+    width: 44,
+    height: 40,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 15,
+    fontWeight: 500,
+    color: colors.text,
+    backgroundColor: colors.background,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 6,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    '&:hover': { backgroundColor: colors.primaryLight, borderColor: colors.primary },
+  }),
+  chapterItemCurrent: css({
+    color: colors.primary,
+    fontWeight: 700,
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   }),
 }
