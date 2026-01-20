@@ -5,6 +5,10 @@
   "type": "module",
   "author": "Lars Gunnarson",
   "license": "GPL-3.0",
+  "packageManager": "pnpm@10.28.1",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/larsgson/bsb-interlinear"

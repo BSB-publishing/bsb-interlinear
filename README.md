@@ -25,13 +25,13 @@ A lightweight, mobile-first web application for exploring the Berean Standard Bi
 
 ```bash
 # Install dependencies
-yarn install
+pnpm install
 
 # Start development server
-yarn dev
+pnpm dev
 
 # Build for production
-yarn build
+pnpm build
 ```
 
 ## Tech Stack

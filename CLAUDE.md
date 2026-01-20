@@ -51,12 +51,12 @@ public/
 ## Commands
 
 ```bash
-yarn dev          # Start development server (port 5173)
-yarn build        # Production build to dist/
-yarn preview      # Preview production build
-yarn lint         # ESLint check
-yarn format       # Prettier format
-yarn typecheck    # TypeScript type checking
+pnpm dev          # Start development server (port 5173)
+pnpm build        # Production build to dist/
+pnpm preview      # Preview production build
+pnpm lint         # ESLint check
+pnpm format       # Prettier format
+pnpm typecheck    # TypeScript type checking
 ```
 
 ## Data Flow

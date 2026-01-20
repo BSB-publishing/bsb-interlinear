@@ -1,6 +1,9 @@
 [build]
-  command = "yarn build"
+  command = "pnpm build"
   publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
 
 # SPA routing - redirect all requests to index.html
 [[redirects]]
