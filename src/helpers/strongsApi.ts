@@ -76,3 +76,39 @@ export async function getLexiconEntries(
 
   return results
 }
+
+/**
+ * Check if a Strong's number is Hebrew
+ */
+export function isHebrewStrongs(strongsNumber: string): boolean {
+  return !!strongsNumber && strongsNumber.toUpperCase().startsWith('H')
+}
+
+/**
+ * Check if a Strong's number is Greek
+ */
+export function isGreekStrongs(strongsNumber: string): boolean {
+  return !!strongsNumber && strongsNumber.toUpperCase().startsWith('G')
+}
+
+/**
+ * Get the language label for a Strong's number
+ */
+export function getStrongsLanguage(strongsNumber: string): 'Hebrew' | 'Greek' {
+  return isHebrewStrongs(strongsNumber) ? 'Hebrew' : 'Greek'
+}
+
+/**
+ * Clear the lexicon cache (useful for testing or memory management)
+ */
+export function clearLexiconCache(): void {
+  lexiconCache.hebrew = null
+  lexiconCache.greek = null
+}
+
+/**
+ * Preload both lexicons (useful for interlinear modes)
+ */
+export async function preloadLexicons(): Promise<void> {
+  await Promise.all([loadHebrewLexicon(), loadGreekLexicon()])
+}

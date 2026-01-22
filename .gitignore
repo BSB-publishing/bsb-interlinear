@@ -32,3 +32,7 @@ yarn.lock
 # Local config
 config.js
 config.ts
+
+# helpful external documentation only
+example/
+docs/

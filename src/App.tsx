@@ -2,14 +2,13 @@
 import { css } from '@emotion/react'
 import { useEffect, useState, useRef } from 'react'
 
-import { getLexiconEntry, getLexiconEntries, LexiconEntry } from '~helpers/strongsApi'
+import { getLexiconEntry, LexiconEntry, getStrongsLanguage } from '~helpers/strongsApi'
 import {
   loadEnrichedBSBChapter,
   BSBChapter,
   BSBVerse,
   BSBHeading,
   BSBIndexEntry,
-  BSBMorphEntry,
   getBookNumber,
   isOldTestament,
   searchConcordance,
@@ -28,8 +27,15 @@ const colors = {
   primaryLight: 'rgb(233, 243, 252)',
   secondary: 'rgb(98,113,122)',
   accent: 'rgb(194,40,57)',
-  success: '#2ecc71',
 }
+
+// Text cleaning helpers
+const PUNCTUATION_REGEX = /^[\s.,;:!?'"()\[\]\-—–׃׀]+$/
+const SKIP_MARKERS_REGEX = /^[-–—]+$|^\.+\s*\.+\s*\.+$|^vvv$/
+const isPunctuation = (text: string) => PUNCTUATION_REGEX.test(text)
+const shouldSkipWord = (text: string, strongs: string | null) =>
+  strongs && SKIP_MARKERS_REGEX.test(text.trim())
+const cleanText = (text: string) => text.replace(/[\[\]{}]/g, '')
 
 // Types
 type DisplayMode = 'text' | 'strongs' | 'interlinear-compact' | 'interlinear-full'
@@ -158,14 +164,13 @@ export default function App() {
   // BSB data
   const [bsbData, setBsbData] = useState<BSBChapter | null>(null)
   const [bsbHeadings, setBsbHeadings] = useState<BSBHeading[]>([])
-  const [bsbIndex, setBsbIndex] = useState<Map<string, BSBIndexEntry>>(new Map())
+  const [bsbIndex, setBsbIndex] = useState<Map<number, BSBIndexEntry>>(new Map())
   const [loading, setLoading] = useState(true)
 
   // Lexicon state
   const [selectedStrongs, setSelectedStrongs] = useState<string | null>(null)
   const [lexiconEntry, setLexiconEntry] = useState<LexiconEntry | null>(null)
   const [showLexicon, setShowLexicon] = useState(false)
-  const [lexiconCache, setLexiconCache] = useState<Record<string, LexiconEntry>>({})
 
   // Concordance state
   const [concordanceStrong, setConcordanceStrong] = useState<string | null>(null)
@@ -182,51 +187,30 @@ export default function App() {
   const isHebrew = isOldTestament(bookNumber)
   const isInterlinear = displayMode === 'interlinear-compact' || displayMode === 'interlinear-full'
 
-  // Persist bookNumber to localStorage
+  // Persist state to localStorage
   useEffect(() => {
     setStoredValue(STORAGE_KEYS.bookNumber, bookNumber)
-  }, [bookNumber])
-
-  // Persist chapter to localStorage
-  useEffect(() => {
     setStoredValue(STORAGE_KEYS.chapter, chapter)
-  }, [chapter])
-
-  // Persist displayMode to localStorage and set Hebrew word order default for interlinear
-  useEffect(() => {
     setStoredValue(STORAGE_KEYS.displayMode, displayMode)
-    // Default to Hebrew word order when switching to interlinear modes (for OT)
-    if (isInterlinear && isHebrew) {
+    setStoredValue(STORAGE_KEYS.useHebrewWordOrder, useHebrewWordOrder)
+  }, [bookNumber, chapter, displayMode, useHebrewWordOrder])
+
+  // Default to Hebrew/Greek word order when switching to interlinear modes
+  useEffect(() => {
+    if (isInterlinear && !useHebrewWordOrder) {
       setUseHebrewWordOrder(true)
     }
-  }, [displayMode, isInterlinear, isHebrew])
-
-  // Persist useHebrewWordOrder to localStorage
-  useEffect(() => {
-    setStoredValue(STORAGE_KEYS.useHebrewWordOrder, useHebrewWordOrder)
-  }, [useHebrewWordOrder])
+  }, [displayMode])
 
   // Load BSB chapter data
   useEffect(() => {
     setLoading(true)
     loadEnrichedBSBChapter(bookNumber, chapter)
-      .then(async result => {
+      .then(result => {
         if (result) {
           setBsbData(result.chapter)
           setBsbHeadings(result.headings)
           setBsbIndex(result.indexEntries)
-
-          // Pre-load lexicon entries for interlinear modes
-          if (isInterlinear) {
-            const allStrongs = new Set<string>()
-            for (const verse of result.chapter.verses) {
-              for (const [, strongs] of verse.w) {
-                if (strongs) allStrongs.add(strongs)
-              }
-            }
-            const entries = await getLexiconEntries(Array.from(allStrongs))
-            setLexiconCache(prev => ({ ...prev, ...entries }))
-          }
         }
         setLoading(false)
       })
@@ -234,7 +218,7 @@ export default function App() {
         console.error('Error loading BSB data:', err)
         setLoading(false)
       })
-  }, [bookNumber, chapter, isInterlinear])
+  }, [bookNumber, chapter])
 
   // Load lexicon entry when Strong's number selected
   useEffect(() => {
@@ -345,43 +329,33 @@ export default function App() {
 
   // Render functions
   const renderVerse = (verse: BSBVerse) => {
-    const verseId = `${verse.b}.${verse.c}.${verse.v}`
-    const indexEntry = bsbIndex.get(verseId)
-    const morphData = indexEntry?.m || []
     const isCompact = displayMode === 'interlinear-compact'
+    const originalWords = verse.heb || verse.grk || []
 
-    // Build morph lookup map
-    const morphMap = new Map<string, BSBMorphEntry>()
-    for (const m of morphData) {
-      if (!morphMap.has(m.s)) morphMap.set(m.s, m)
+    // Build original word lookup: Strong's -> original text
+    const originalWordMap = new Map<string, string>()
+    for (const [text, strongs] of originalWords) {
+      if (strongs && !originalWordMap.has(strongs)) {
+        originalWordMap.set(strongs, text)
+      }
     }
 
-    // Plain text mode - words with Strong's numbers are clickable
-    // Clean up special markers for plain reading
+    // Plain text mode
     if (displayMode === 'text') {
       return (
         <div key={verse.v} css={styles.verseRow}>
           <span css={styles.verseNumber}>{verse.v}</span>
           <span css={styles.verseText}>
             {verse.w.map(([text, strongs], idx) => {
-              // Skip untranslated markers (dashes, ellipses, vvv placeholders with Strong's)
-              if (strongs && /^[-–—]+$|^\.+\s*\.+\s*\.+$|^vvv$/.test(text.trim())) {
-                return null
-              }
-              // Punctuation or no Strong's number - render as plain text
-              if (!strongs || /^[\s.,;:!?'"()\[\]\-—]+$/.test(text)) {
-                return <span key={idx}>{text}</span>
-              }
-              // Clean up text: remove brackets [] and curly braces {} but keep content
-              const cleanText = text.replace(/[\[\]{}]/g, '')
-              // Word with Strong's number - make clickable
+              if (shouldSkipWord(text, strongs)) return null
+              if (!strongs || isPunctuation(text)) return <span key={idx}>{text}</span>
               return (
                 <span
                   key={idx}
                   css={styles.clickableWord}
                   onClick={() => handleStrongsPress(strongs)}
                 >
-                  {cleanText}
+                  {cleanText(text)}
                 </span>
               )
             })}
@@ -390,16 +364,14 @@ export default function App() {
       )
     }
 
-    // Strong's inline mode - both text and badge are clickable
+    // Strong's inline mode
     if (displayMode === 'strongs') {
       return (
         <div key={verse.v} css={styles.verseRow}>
           <span css={styles.verseNumber}>{verse.v}</span>
           <div css={styles.strongsInline}>
             {verse.w.map(([text, strongs], idx) => {
-              if (!strongs || /^[\s.,;:!?'"()\[\]\-—]+$/.test(text)) {
-                return <span key={idx}>{text}</span>
-              }
+              if (!strongs || isPunctuation(text)) return <span key={idx}>{text}</span>
               return (
                 <span
                   key={idx}
@@ -416,13 +388,39 @@ export default function App() {
       )
     }
 
-    // Interlinear mode
-    const wordTiles = verse.w
-      .map(([text, strongs], idx) => ({ text, strongs, idx }))
-      .filter(({ strongs, text }) => strongs && !/^[\s.,;:!?'"()\[\]\-—]+$/.test(text))
+    // Interlinear mode - build word pairs
+    type WordPair = { original: string; english: string; strongs: string }
+    let wordPairs: WordPair[]
 
-    // RTL direction in CSS handles the right-to-left flow
-    const orderedTiles = wordTiles
+    if (useHebrewWordOrder && originalWords.length > 0) {
+      // Original language word order
+      const usedEnglishIndices = new Set<number>()
+      wordPairs = originalWords
+        .filter(([text, strongs]) => strongs && !isPunctuation(text))
+        .map(([origText, strongs]) => {
+          let englishText = ''
+          for (let i = 0; i < verse.w.length; i++) {
+            const [engText, engStrongs] = verse.w[i]
+            if (engStrongs === strongs && !usedEnglishIndices.has(i)) {
+              englishText = cleanText(engText)
+              usedEnglishIndices.add(i)
+              break
+            }
+          }
+          return { original: origText, english: englishText, strongs: strongs! }
+        })
+    } else {
+      // English word order
+      wordPairs = verse.w
+        .filter(
+          ([text, strongs]) => strongs && !isPunctuation(text) && !shouldSkipWord(text, strongs)
+        )
+        .map(([text, strongs]) => ({
+          original: originalWordMap.get(strongs!) || '',
+          english: cleanText(text),
+          strongs: strongs!,
+        }))
+    }
 
     return (
       <div key={verse.v} css={styles.verseRow}>
@@ -430,27 +428,21 @@ export default function App() {
         <div
           css={[styles.interlinearContent, useHebrewWordOrder && isHebrew && styles.hebrewOrder]}
         >
-          {orderedTiles.map(({ text, strongs, idx }) => {
-            const morph = morphMap.get(strongs!)
-            const lex = lexiconCache[strongs!.toUpperCase()]
-            const originalWord = morph?.l || lex?.word
-
-            return (
-              <button
-                key={idx}
-                css={[styles.wordCard, isCompact && styles.wordCardCompact]}
-                onClick={() => handleStrongsPress(strongs!)}
-              >
-                {!isCompact && <span css={styles.strongsNum}>{strongs}</span>}
-                {originalWord && (
-                  <span css={[styles.originalWord, isCompact && styles.originalWordCompact]}>
-                    {originalWord}
-                  </span>
-                )}
-                <span css={styles.englishWord}>{text}</span>
-              </button>
-            )
-          })}
+          {wordPairs.map((pair, idx) => (
+            <button
+              key={idx}
+              css={[styles.wordCard, isCompact && styles.wordCardCompact]}
+              onClick={() => handleStrongsPress(pair.strongs)}
+            >
+              {!isCompact && <span css={styles.strongsNum}>{pair.strongs}</span>}
+              {pair.original && (
+                <span css={[styles.originalWord, isCompact && styles.originalWordCompact]}>
+                  {pair.original}
+                </span>
+              )}
+              <span css={styles.englishWord}>{pair.english}</span>
+            </button>
+          ))}
         </div>
       </div>
     )
@@ -464,8 +456,7 @@ export default function App() {
 
   const renderCrossRefs = (verseNum: number) => {
     if (displayMode !== 'interlinear-full' || !bsbData) return null
-    const verseId = `${bsbData.book}.${chapter}.${verseNum}`
-    const crossRefs = bsbIndex.get(verseId)?.x || []
+    const crossRefs = bsbIndex.get(verseNum)?.x || []
     if (crossRefs.length === 0) return null
 
     return (
@@ -514,7 +505,7 @@ export default function App() {
   // Lexicon modal
   const renderLexiconModal = () => {
     if (!lexiconEntry || !showLexicon) return null
-    const langType = selectedStrongs?.startsWith('H') ? 'Hebrew' : 'Greek'
+    const langType = selectedStrongs ? getStrongsLanguage(selectedStrongs) : 'Hebrew'
 
     return (
       <>
@@ -693,10 +684,6 @@ export default function App() {
                 <span css={styles.concordanceRef}>
                   {book?.name || result.bookCode} {result.chapter}:{result.verse}
                 </span>
-                <span css={styles.concordanceText}>
-                  {result.text.slice(0, 80)}
-                  {result.text.length > 80 ? '...' : ''}
-                </span>
               </button>
             )
           })}
@@ -707,7 +694,7 @@ export default function App() {
 
   // Strong's detail screen
   if (screen === 'strongDetail' && lexiconEntry) {
-    const langType = selectedStrongs?.startsWith('H') ? 'Hebrew' : 'Greek'
+    const langType = selectedStrongs ? getStrongsLanguage(selectedStrongs) : 'Hebrew'
     return (
       <div css={styles.container}>
         <div css={styles.header}>
@@ -920,17 +907,6 @@ const styles = {
     cursor: 'pointer',
     padding: '4px 0',
     '&:hover': { opacity: 0.8 },
-  }),
-  chapterBtn: css({
-    fontSize: 17,
-    fontWeight: 600,
-    color: colors.text,
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '4px 8px',
-    borderRadius: 4,
-    '&:hover': { backgroundColor: colors.primaryLight },
   }),
   backBtn: css({
     fontSize: 15,
@@ -1147,38 +1123,11 @@ const styles = {
     textAlign: 'left',
     '&:hover': { backgroundColor: colors.backgroundAlt },
   }),
-  listItemActive: css({ backgroundColor: colors.primaryLight }),
-  listText: css({ fontSize: 16, color: colors.text, fontWeight: 500 }),
-  listMeta: css({ fontSize: 13, color: colors.textMuted, marginTop: 3 }),
   loading: css({ padding: 20, textAlign: 'center', color: colors.secondary }),
   empty: css({ padding: 40, textAlign: 'center', color: colors.textMuted }),
 
-  // Grid screens
-  grid: css({ display: 'flex', flexWrap: 'wrap', padding: 16, gap: 8, overflow: 'auto' }),
-  gridItem: css({
-    width: 50,
-    height: 45,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.background,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 6,
-    cursor: 'pointer',
-    '&:hover': { backgroundColor: colors.primaryLight },
-  }),
-  gridItemActive: css({
-    color: colors.primary,
-    fontWeight: 700,
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
-  }),
-
   // Concordance
   concordanceRef: css({ fontSize: 15, fontWeight: 600, color: colors.primary }),
-  concordanceText: css({ fontSize: 14, color: colors.secondary, marginTop: 4 }),
 
   // Bottom sheet / Modal
   overlay: css({
