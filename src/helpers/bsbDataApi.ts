@@ -198,10 +198,30 @@ export type BSBMorphEntry = {
   l: string // lemma (original word)
 }
 
+export type BSBWordSense = {
+  si: number // Sense index
+  s: string // Strong's number
+  gl: string // Gloss for this sense
+}
+
+export type BSBMarbleSense = {
+  lem: string // Hebrew/Aramaic lemma
+  dom: string // Semantic domain
+  sid: string // Sense ID
+}
+
 export type BSBIndexEntry = {
   s: string[] // Strong's numbers
   x: string[] // Cross-references
   m?: BSBMorphEntry[] // Morphology
+  tp?: string[] // Nave's Topical Bible topics
+  par?: string[] // Parallel passages
+  img?: string[] // Image IDs from UBS
+  map?: string[] // Map coordinates (lat,lng)
+  dom?: string[] // Semantic domains
+  ws?: Record<string, BSBWordSense> // Word sense disambiguation
+  msense?: Record<string, BSBMarbleSense> // MARBLE sense data
+  g?: Record<string, { lemma?: string; glosses?: string[]; def?: string }> // Glosses
 }
 
 export type ConcordanceResult = {

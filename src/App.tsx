@@ -10,6 +10,7 @@ import {
   BSBHeading,
   BSBIndexEntry,
   getBookNumber,
+  getBookCode,
   isOldTestament,
   searchConcordance,
   ConcordanceResult,
@@ -41,6 +42,25 @@ const cleanText = (text: string) => text.replace(/[\[\]{}]/g, '')
 type DisplayMode = 'text' | 'strongs' | 'interlinear-compact' | 'interlinear-full'
 type Screen = 'reader' | 'passageSelector' | 'concordance' | 'strongDetail'
 type Testament = 'OT' | 'NT'
+type PaneType = 'image' | 'map' | null
+
+// UBS image URL pattern
+const UBS_IMAGE_BASE = 'https://github.com/ubsicap/ubs-open-license/raw/main/images'
+
+// Helper to format parallel passage reference for display
+const formatParallelRef = (ref: string): string => {
+  // ref format: "GEN.5.2" -> "Gen 5:2"
+  const parts = ref.split('.')
+  if (parts.length !== 3) return ref
+  const [bookCode, chapter, verse] = parts
+  // Find book number and use abbreviation
+  const bookNum = Object.entries(bookAbbrev).find(([num]) => {
+    const code = getBookCode(parseInt(num))
+    return code === bookCode
+  })
+  const abbr = bookNum ? bookNum[1] : bookCode
+  return `${abbr} ${chapter}:${verse}`
+}
 
 // Book abbreviations for compact display
 const bookAbbrev: Record<number, string> = {
@@ -169,6 +189,7 @@ export default function App() {
 
   // Lexicon state
   const [selectedStrongs, setSelectedStrongs] = useState<string | null>(null)
+  const [selectedVerseNum, setSelectedVerseNum] = useState<number | null>(null)
   const [lexiconEntry, setLexiconEntry] = useState<LexiconEntry | null>(null)
   const [showLexicon, setShowLexicon] = useState(false)
 
@@ -176,6 +197,16 @@ export default function App() {
   const [concordanceStrong, setConcordanceStrong] = useState<string | null>(null)
   const [concordanceResults, setConcordanceResults] = useState<ConcordanceResult[]>([])
   const [concordanceLoading, setConcordanceLoading] = useState(false)
+
+  // Image/Map pane state
+  const [activePane, setActivePane] = useState<PaneType>(null)
+  const [paneImages, setPaneImages] = useState<string[]>([])
+  const [paneImageIndex, setPaneImageIndex] = useState(0)
+  const [paneMapCoords, setPaneMapCoords] = useState<string[]>([])
+  const [paneVerseRef, setPaneVerseRef] = useState<string>('')
+
+  // Verse footer expand state
+  const [expandedVerses, setExpandedVerses] = useState<Set<number>>(new Set())
 
   // Swipe handling
   const touchStartX = useRef(0)
@@ -297,7 +328,10 @@ export default function App() {
   }
 
   // Lexicon functions
-  const handleStrongsPress = (strongsNumber: string) => setSelectedStrongs(strongsNumber)
+  const handleStrongsPress = (strongsNumber: string, verseNum?: number) => {
+    setSelectedStrongs(strongsNumber)
+    setSelectedVerseNum(verseNum ?? null)
+  }
 
   const closeLexicon = () => {
     setShowLexicon(false)
@@ -317,6 +351,37 @@ export default function App() {
       console.error('Concordance search error:', error)
     }
     setConcordanceLoading(false)
+  }
+
+  // Image/Map pane functions
+  // @ts-ignore - kept for future use when images are hosted
+  const _openImagePane = (images: string[], verseNum: number) => {
+    setPaneImages(images)
+    setPaneImageIndex(0)
+    setPaneVerseRef(`${currentBook.name} ${chapter}:${verseNum}`)
+    setActivePane('image')
+  }
+
+  const openMapPane = (coords: string[], verseNum: number) => {
+    setPaneMapCoords(coords)
+    setPaneVerseRef(`${currentBook.name} ${chapter}:${verseNum}`)
+    setActivePane('map')
+  }
+
+  const closePane = () => {
+    setActivePane(null)
+    setPaneImages([])
+    setPaneMapCoords([])
+    setPaneImageIndex(0)
+  }
+
+  const toggleVerseExpand = (verseNum: number) => {
+    setExpandedVerses(prev => {
+      const next = new Set(prev)
+      if (next.has(verseNum)) next.delete(verseNum)
+      else next.add(verseNum)
+      return next
+    })
   }
 
   // Display mode labels
@@ -353,7 +418,7 @@ export default function App() {
                 <span
                   key={idx}
                   css={styles.clickableWord}
-                  onClick={() => handleStrongsPress(strongs)}
+                  onClick={() => handleStrongsPress(strongs, verse.v)}
                 >
                   {cleanText(text)}
                 </span>
@@ -376,7 +441,7 @@ export default function App() {
                 <span
                   key={idx}
                   css={styles.clickableWord}
-                  onClick={() => handleStrongsPress(strongs)}
+                  onClick={() => handleStrongsPress(strongs, verse.v)}
                 >
                   <span>{text}</span>
                   <span css={styles.strongsTag}>{strongs}</span>
@@ -422,27 +487,130 @@ export default function App() {
         }))
     }
 
+    // Get index entry for footer data in full mode
+    const indexEntry = displayMode === 'interlinear-full' ? bsbIndex.get(verse.v) : null
+    const hasImages = indexEntry?.img && indexEntry.img.length > 0
+    const hasMap = indexEntry?.map && indexEntry.map.length > 0
+    const hasTopics = indexEntry?.tp && indexEntry.tp.length > 0
+    const hasParallels = indexEntry?.par && indexEntry.par.length > 0
+    const hasCrossRefs = indexEntry?.x && indexEntry.x.length > 0
+    const hasExpandableContent = hasTopics || hasParallels || hasCrossRefs
+    const showFooter =
+      displayMode === 'interlinear-full' && (hasImages || hasMap || hasExpandableContent)
+
     return (
       <div key={verse.v} css={styles.verseRow}>
         <span css={styles.verseNumber}>{verse.v}</span>
-        <div
-          css={[styles.interlinearContent, useHebrewWordOrder && isHebrew && styles.hebrewOrder]}
-        >
-          {wordPairs.map((pair, idx) => (
-            <button
-              key={idx}
-              css={[styles.wordCard, isCompact && styles.wordCardCompact]}
-              onClick={() => handleStrongsPress(pair.strongs)}
-            >
-              {!isCompact && <span css={styles.strongsNum}>{pair.strongs}</span>}
-              {pair.original && (
-                <span css={[styles.originalWord, isCompact && styles.originalWordCompact]}>
-                  {pair.original}
-                </span>
+        <div css={styles.interlinearWrapper}>
+          <div
+            css={[styles.interlinearContent, useHebrewWordOrder && isHebrew && styles.hebrewOrder]}
+          >
+            {wordPairs.map((pair, idx) => (
+              <button
+                key={idx}
+                css={[styles.wordCard, isCompact && styles.wordCardCompact]}
+                onClick={() => handleStrongsPress(pair.strongs, verse.v)}
+              >
+                {!isCompact && <span css={styles.strongsNum}>{pair.strongs}</span>}
+                {pair.original && (
+                  <span css={[styles.originalWord, isCompact && styles.originalWordCompact]}>
+                    {pair.original}
+                  </span>
+                )}
+                <span css={styles.englishWord}>{pair.english}</span>
+              </button>
+            ))}
+          </div>
+          {showFooter && (
+            <div css={styles.verseFooter}>
+              {/* Line 1: Map icon + expand toggle */}
+              <div css={styles.footerIconRow}>
+                {/* Images disabled until hosted locally
+                {hasImages && (
+                  <button
+                    css={styles.footerIcon}
+                    onClick={() => _openImagePane(indexEntry!.img!, verse.v)}
+                    title="View images"
+                  >
+                    📷
+                  </button>
+                )}
+                */}
+                {hasMap && (
+                  <button
+                    css={styles.footerIcon}
+                    onClick={() => openMapPane(indexEntry!.map!, verse.v)}
+                    title="View on map"
+                  >
+                    📍
+                  </button>
+                )}
+                {hasExpandableContent && (
+                  <button
+                    css={styles.expandIcon}
+                    onClick={() => toggleVerseExpand(verse.v)}
+                    title={
+                      expandedVerses.has(verse.v) ? 'Hide details' : 'Show references & topics'
+                    }
+                  >
+                    {expandedVerses.has(verse.v) ? '▲' : '▼'}
+                  </button>
+                )}
+              </div>
+              {/* Expanded content: Topics, Cross-refs & Parallels */}
+              {expandedVerses.has(verse.v) && (
+                <>
+                  {/* Nave's Topics */}
+                  {hasTopics && (
+                    <div css={styles.expandedTopics}>{indexEntry!.tp!.join(' • ')}</div>
+                  )}
+                  {/* Cross-references */}
+                  {hasCrossRefs && (
+                    <div css={styles.expandedRefs}>
+                      {indexEntry!.x!.map((ref, idx) => (
+                        <button
+                          key={idx}
+                          css={styles.expandedRefBtn}
+                          onClick={() => {
+                            const match = ref.match(/^([A-Z0-9]+)\.(\d+)\.(\d+)$/)
+                            if (match) {
+                              setBookNumber(getBookNumber(match[1]))
+                              setChapter(parseInt(match[2]))
+                            }
+                          }}
+                        >
+                          {ref.replace(/\./g, ' ').replace(/(\d+) (\d+)$/, '$1:$2')}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* Parallel passages */}
+                  {hasParallels && (
+                    <div css={styles.expandedSection}>
+                      <span css={styles.expandedLabel}>Parallels:</span>
+                      <div css={styles.expandedRefs}>
+                        {indexEntry!.par!.map((ref, idx) => (
+                          <button
+                            key={idx}
+                            css={styles.expandedRefBtn}
+                            onClick={() => {
+                              const parts = ref.split('.')
+                              if (parts.length === 3) {
+                                setBookNumber(getBookNumber(parts[0]))
+                                setChapter(parseInt(parts[1]))
+                              }
+                            }}
+                          >
+                            {formatParallelRef(ref)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-              <span css={styles.englishWord}>{pair.english}</span>
-            </button>
-          ))}
+            </div>
+          )}
         </div>
       </div>
     )
@@ -454,32 +622,7 @@ export default function App() {
     </div>
   )
 
-  const renderCrossRefs = (verseNum: number) => {
-    if (displayMode !== 'interlinear-full' || !bsbData) return null
-    const crossRefs = bsbIndex.get(verseNum)?.x || []
-    if (crossRefs.length === 0) return null
-
-    return (
-      <div css={styles.crossRefs}>
-        {crossRefs.slice(0, 3).map((ref, idx) => (
-          <button
-            key={idx}
-            css={styles.crossRefBtn}
-            onClick={() => {
-              const match = ref.match(/^([A-Z0-9]+)\.(\d+)\.(\d+)$/)
-              if (match) {
-                setBookNumber(getBookNumber(match[1]))
-                setChapter(parseInt(match[2]))
-              }
-            }}
-          >
-            {ref.replace(/\./g, ' ').replace(/(\d+) (\d+)$/, '$1:$2')}
-          </button>
-        ))}
-        {crossRefs.length > 3 && <span css={styles.crossRefMore}>+{crossRefs.length - 3}</span>}
-      </div>
-    )
-  }
+  // Cross-refs now rendered inside verse footer when expanded
 
   const renderContent = () => {
     if (!bsbData) return null
@@ -491,21 +634,135 @@ export default function App() {
         elements.push(renderHeading(h))
       }
       elements.push(renderVerse(verse))
-      const xrefs = renderCrossRefs(verse.v)
-      if (xrefs)
-        elements.push(
-          <div key={`xref-${verse.v}`} css={styles.crossRefRow}>
-            {xrefs}
-          </div>
-        )
     }
     return elements
+  }
+
+  // Image pane
+  const renderImagePane = () => {
+    if (activePane !== 'image' || paneImages.length === 0) return null
+    const currentImage = paneImages[paneImageIndex]
+    const imageUrl = `${UBS_IMAGE_BASE}/${currentImage}.jpg`
+    // Format image name for display (e.g., "WEB-0195_the_earth" -> "The Earth")
+    const imageName = currentImage
+      .replace(/^WEB-\d+_/, '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase())
+
+    return (
+      <div css={styles.paneOverlay}>
+        <div css={styles.pane}>
+          <div css={styles.paneHeader}>
+            <span css={styles.paneTitle}>Images</span>
+            <button css={styles.paneCloseBtn} onClick={closePane}>
+              ✕
+            </button>
+          </div>
+          <div css={styles.paneContent}>
+            <div css={styles.imageContainer}>
+              <img
+                src={imageUrl}
+                alt={imageName}
+                css={styles.paneImage}
+                onError={e => {
+                  const img = e.target as HTMLImageElement
+                  img.style.display = 'none'
+                }}
+              />
+            </div>
+            <div css={styles.imageCaption}>
+              "{imageName}" — {paneVerseRef}
+            </div>
+            {paneImages.length > 1 && (
+              <div css={styles.imageNav}>
+                <button
+                  css={styles.imageNavBtn}
+                  onClick={() => setPaneImageIndex(Math.max(0, paneImageIndex - 1))}
+                  disabled={paneImageIndex === 0}
+                >
+                  ← Prev
+                </button>
+                <span css={styles.imageNavInfo}>
+                  {paneImageIndex + 1} of {paneImages.length}
+                </span>
+                <button
+                  css={styles.imageNavBtn}
+                  onClick={() =>
+                    setPaneImageIndex(Math.min(paneImages.length - 1, paneImageIndex + 1))
+                  }
+                  disabled={paneImageIndex === paneImages.length - 1}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </div>
+          <div css={styles.paneAttribution}>Images from United Bible Societies (CC-BY-SA 4.0)</div>
+        </div>
+      </div>
+    )
+  }
+
+  // Map pane
+  const renderMapPane = () => {
+    if (activePane !== 'map' || paneMapCoords.length === 0) return null
+    const coords = paneMapCoords[0] // Use first coordinate
+    const [lat, lng] = coords.split(',')
+    const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`
+
+    return (
+      <div css={styles.paneOverlay}>
+        <div css={styles.pane}>
+          <div css={styles.paneHeader}>
+            <span css={styles.paneTitle}>Map</span>
+            <button css={styles.paneCloseBtn} onClick={closePane}>
+              ✕
+            </button>
+          </div>
+          <div css={styles.paneContent}>
+            <div css={styles.mapContainer}>
+              <div css={styles.mapPlaceholder}>
+                <span css={styles.mapPin}>📍</span>
+                <div css={styles.mapCoords}>
+                  {lat}, {lng}
+                </div>
+              </div>
+            </div>
+            <div css={styles.mapCaption}>Location from {paneVerseRef}</div>
+            <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" css={styles.mapLink}>
+              Open in Google Maps →
+            </a>
+            {paneMapCoords.length > 1 && (
+              <div css={styles.mapExtra}>
+                +{paneMapCoords.length - 1} more location{paneMapCoords.length > 2 ? 's' : ''}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Lexicon modal
   const renderLexiconModal = () => {
     if (!lexiconEntry || !showLexicon) return null
     const langType = selectedStrongs ? getStrongsLanguage(selectedStrongs) : 'Hebrew'
+
+    // Get word sense and domain data from the verse index
+    const verseIndex = selectedVerseNum ? bsbIndex.get(selectedVerseNum) : null
+
+    // Find word sense for this Strong's number
+    let wordSenseGloss: string | null = null
+    if (verseIndex?.ws && selectedStrongs) {
+      const wsEntries = Object.values(verseIndex.ws)
+      const matchingWs = wsEntries.find(ws => ws.s === selectedStrongs)
+      if (matchingWs && matchingWs.gl && matchingWs.gl !== '-') {
+        wordSenseGloss = matchingWs.gl
+      }
+    }
+
+    // Get semantic domains
+    const domains = verseIndex?.dom || []
 
     return (
       <>
@@ -533,6 +790,13 @@ export default function App() {
             <div css={styles.lexUnderline} />
             {lexiconEntry.translit && <div css={styles.lexTranslit}>{lexiconEntry.translit}</div>}
             {lexiconEntry.pron && <div css={styles.lexPron}>/{lexiconEntry.pron}/</div>}
+            {/* Word sense - context-specific meaning */}
+            {wordSenseGloss && (
+              <div css={styles.lexSection}>
+                <div css={styles.lexLabel}>In This Verse</div>
+                <div css={styles.lexWordSense}>{wordSenseGloss}</div>
+              </div>
+            )}
             {lexiconEntry.gloss && (
               <div css={styles.lexSection}>
                 <div css={styles.lexLabel}>Gloss</div>
@@ -543,6 +807,20 @@ export default function App() {
               <div css={styles.lexSection}>
                 <div css={styles.lexLabel}>Definition</div>
                 <div css={styles.lexDef}>{lexiconEntry.def}</div>
+              </div>
+            )}
+            {/* Semantic domains */}
+            {domains.length > 0 && (
+              <div css={styles.lexSection}>
+                <div css={styles.lexLabel}>Semantic Domains</div>
+                <div css={styles.lexDomains}>
+                  {domains.slice(0, 6).map((domain, idx) => (
+                    <span key={idx} css={styles.domainTag}>
+                      {domain}
+                    </span>
+                  ))}
+                  {domains.length > 6 && <span css={styles.domainMore}>+{domains.length - 6}</span>}
+                </div>
               </div>
             )}
             <div css={styles.sheetActions}>
@@ -757,6 +1035,8 @@ export default function App() {
   return (
     <div css={styles.container}>
       {renderLexiconModal()}
+      {renderImagePane()}
+      {renderMapPane()}
 
       {/* Header */}
       <div css={styles.header}>
@@ -1096,6 +1376,236 @@ const styles = {
   }),
   crossRefMore: css({ fontSize: 11, color: colors.textMuted, fontStyle: 'italic' }),
 
+  // Interlinear wrapper for footer
+  interlinearWrapper: css({ flex: 1, display: 'flex', flexDirection: 'column' }),
+
+  // Verse footer (interlinear-full mode)
+  verseFooter: css({
+    marginTop: 8,
+    paddingTop: 6,
+    borderTop: `1px solid ${colors.border}`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  }),
+  footerIconRow: css({
+    display: 'flex',
+    gap: 8,
+  }),
+  footerIcon: css({
+    padding: '2px 6px',
+    fontSize: 16,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    borderRadius: 4,
+    transition: 'background-color 0.15s',
+    '&:hover': { backgroundColor: colors.primaryLight },
+  }),
+  expandIcon: css({
+    padding: '2px 6px',
+    fontSize: 10,
+    color: colors.textMuted,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    borderRadius: 4,
+    transition: 'all 0.15s',
+    '&:hover': { backgroundColor: colors.primaryLight, color: colors.primary },
+  }),
+  // Expanded section styles (smaller fonts for dense content)
+  expandedSection: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 4,
+    alignItems: 'baseline',
+    marginTop: 2,
+  }),
+  expandedLabel: css({
+    fontSize: 9,
+    fontWeight: 600,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    marginRight: 4,
+  }),
+  expandedRefs: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 3,
+  }),
+  expandedRefBtn: css({
+    padding: '1px 4px',
+    fontSize: 9,
+    fontWeight: 500,
+    color: colors.primary,
+    backgroundColor: colors.primaryLight,
+    border: 'none',
+    borderRadius: 3,
+    cursor: 'pointer',
+    '&:hover': { backgroundColor: colors.primary, color: '#fff' },
+  }),
+  expandedTopics: css({
+    fontSize: 9,
+    color: colors.secondary,
+    fontWeight: 500,
+    textTransform: 'uppercase',
+    letterSpacing: '0.2px',
+    lineHeight: 1.4,
+  }),
+
+  // Image/Map pane styles
+  paneOverlay: css({
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  }),
+  pane: css({
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    maxWidth: 500,
+    width: '100%',
+    maxHeight: '90vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+  }),
+  paneHeader: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    borderBottom: `1px solid ${colors.border}`,
+  }),
+  paneTitle: css({
+    fontSize: 17,
+    fontWeight: 600,
+    color: colors.text,
+  }),
+  paneCloseBtn: css({
+    padding: '4px 8px',
+    fontSize: 18,
+    color: colors.textMuted,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    borderRadius: 4,
+    '&:hover': { backgroundColor: colors.backgroundAlt },
+  }),
+  paneContent: css({
+    padding: 16,
+    overflow: 'auto',
+    flex: 1,
+  }),
+  paneAttribution: css({
+    padding: '10px 16px',
+    fontSize: 10,
+    color: colors.textMuted,
+    textAlign: 'center',
+    borderTop: `1px solid ${colors.border}`,
+  }),
+
+  // Image pane
+  imageContainer: css({
+    display: 'flex',
+    justifyContent: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    overflow: 'hidden',
+    minHeight: 200,
+  }),
+  paneImage: css({
+    maxWidth: '100%',
+    maxHeight: 400,
+    objectFit: 'contain',
+  }),
+  imageCaption: css({
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.secondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  }),
+  imageNav: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 12,
+  }),
+  imageNavBtn: css({
+    padding: '6px 12px',
+    fontSize: 13,
+    color: colors.primary,
+    backgroundColor: colors.primaryLight,
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    '&:disabled': { opacity: 0.4, cursor: 'not-allowed' },
+    '&:hover:not(:disabled)': { backgroundColor: colors.primary, color: '#fff' },
+  }),
+  imageNavInfo: css({
+    fontSize: 13,
+    color: colors.textMuted,
+  }),
+
+  // Map pane
+  mapContainer: css({
+    display: 'flex',
+    justifyContent: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    overflow: 'hidden',
+    minHeight: 200,
+  }),
+  mapPlaceholder: css({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  }),
+  mapPin: css({
+    fontSize: 48,
+    marginBottom: 12,
+  }),
+  mapCoords: css({
+    fontSize: 14,
+    color: colors.secondary,
+    fontFamily: 'monospace',
+  }),
+  mapCaption: css({
+    marginTop: 12,
+    fontSize: 14,
+    color: colors.secondary,
+    textAlign: 'center',
+  }),
+  mapLink: css({
+    display: 'block',
+    marginTop: 12,
+    padding: '10px 16px',
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#fff',
+    backgroundColor: colors.primary,
+    border: 'none',
+    borderRadius: 8,
+    textAlign: 'center',
+    textDecoration: 'none',
+    cursor: 'pointer',
+    '&:hover': { opacity: 0.9 },
+  }),
+  mapExtra: css({
+    marginTop: 8,
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+  }),
+
   // Footer
   footerBtn: css({
     padding: '8px 14px',
@@ -1199,7 +1709,19 @@ const styles = {
     marginBottom: 3,
   }),
   lexGloss: css({ fontSize: 16, fontWeight: 600, color: colors.primary }),
+  lexWordSense: css({ fontSize: 16, fontWeight: 600, color: colors.accent, fontStyle: 'italic' }),
   lexDef: css({ fontSize: 15, color: colors.text, lineHeight: 1.5 }),
+  lexDomains: css({ display: 'flex', flexWrap: 'wrap', gap: 6 }),
+  domainTag: css({
+    padding: '3px 8px',
+    fontSize: 11,
+    fontWeight: 500,
+    color: colors.secondary,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 4,
+    border: `1px solid ${colors.border}`,
+  }),
+  domainMore: css({ fontSize: 11, color: colors.textMuted, alignSelf: 'center' }),
   lexMorph: css({ fontSize: 14, color: colors.secondary, fontFamily: 'monospace' }),
   lexStepDef: css({ fontSize: 13, color: colors.secondary, lineHeight: 1.5 }),
   lexKjv: css({ fontSize: 14, color: colors.secondary }),
